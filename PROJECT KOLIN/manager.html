@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KOLIN | Manager Control & Financial Report</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Pustaka SheetJS untuk Export Excel langsung dari browser -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+:root{--gold:#d9a441;--light:#f5cf78;--black:#080808;--panel:#171717}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#292116,#080808 60%);color:#fff;font-family:Arial,sans-serif}
+.app{width:100%;max-width:1200px;margin:auto;padding:25px 16px}
+.login{max-width:420px;margin:7vh auto;background:var(--panel);border:1px solid #6b501f;border-radius:22px;padding:30px;box-shadow:0 15px 40px #0009;text-align:center}
+.login img,.brand img{object-fit:cover;border-radius:50%;border:2px solid var(--gold)}
+.login img{width:80px;height:80px}
+.login h2,h2{color:var(--light)}
+.login p,p{color:#ccc;font-size:14px}
+.group{margin:14px 0;text-align:left}
+.group label{display:block;color:var(--light);font-size:13px;margin-bottom:6px}
+input,select{background:#0b0b0b;border:1px solid #555;border-radius:8px;padding:12px;color:#fff;width:100%;font-size:14px}
+input:focus,select:focus{outline:1px solid var(--gold)}
+.btn{background:var(--gold);color:#000;border:0;padding:11px 18px;border-radius:8px;font-weight:bold;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.full{width:100%}
+.danger{background:#a83232;color:#fff}
+.success{background:#11381b;color:#78f58e}
+.small{padding:7px 11px;font-size:12px}
+#dashboard{display:none}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;color:var(--light);font-weight:bold;letter-spacing:2px}
+.brand img{width:48px;height:48px}
+.nav{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px}
+.tab{background:#222;color:#ccc;border:1px solid #444;padding:10px 16px;border-radius:24px;cursor:pointer;font-weight:bold}
+.tab.active{background:var(--gold);color:#000}
+.panel{display:none;background:var(--panel);border:1px solid #6b501f;border-radius:20px;padding:22px;box-shadow:0 15px 40px #0009}
+.panel.active{display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:18px 0}
+.stat,.box,.formbox{background:#111;border:1px solid #444;border-radius:13px;padding:17px}
+.stat h3{margin:0 0 9px;color:var(--light);font-size:14px}
+.value{font-size:23px;font-weight:bold}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}
+.tablewrap{width:100%;overflow-x:auto;margin-top:15px}
+table{width:100%;border-collapse:collapse;background:#111}
+th,td{padding:11px 12px;text-align:left;border-bottom:1px solid #333;font-size:13px;white-space:normal}
+th{background:#251d11;color:var(--light)}
+.badge{padding:4px 9px;border-radius:20px;font-size:11px;font-weight:bold}
+.pending{background:#3b2d11;color:var(--light)}
+.completed,.income{background:#11381b;color:#78f58e}
+.expense{background:#381111;color:#f57878}
+.folderitem{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #333;font-size:13px}
+.folderitem span:last-child{color:#78f58e;font-weight:bold}
+.note{font-size:12px;color:#aaa;line-height:1.5}
+.actions{display:flex;gap:9px;flex-wrap:wrap}
+@media(max-width:600px){
+.panel{padding:15px}
+.brand{font-size:14px;letter-spacing:1px}
+th,td{font-size:12px;padding:9px}
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+  <!-- LOGIN MANAGER -->
+  <section class="login" id="loginSection">
+    <img src="kolin.jpeg" alt="Logo KOLIN" onerror="this.style.display='none'">
+    <h2>MANAGER LOGIN</h2>
+    <p>Masuk menggunakan email dan password Manager Supabase.</p>
+
+    <div class="group">
+      <label>Email / Username</label>
+      <input id="loginEmail" type="email" placeholder="manager@email.com" autocomplete="username">
+    </div>
+
+    <div class="group">
+      <label>Password</label>
+      <input id="loginPassword" type="password" placeholder="Masukkan password" autocomplete="current-password">
+    </div>
+
+    <button class="btn full" onclick="handleLogin()">MASUK DASHBOARD</button>
+    <p class="note">Akun Manager dibuat terlebih dahulu melalui Supabase Authentication.</p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <main id="dashboard">
+
+    <header class="top">
+      <div class="brand">
+        <img src="kolin.jpeg" alt="Logo KOLIN" onerror="this.style.display='none'">
+        KOLIN | MANAGER CONTROL PANEL
+      </div>
+
+      <div class="actions">
+        <button class="btn small" onclick="initDashboard()">Muat Ulang</button>
+        <button class="btn danger small" onclick="handleLogout()">Keluar</button>
+      </div>
+    </header>
+
+    <nav class="nav">
+      <button class="tab active" onclick="switchTab('orders',this)">Kelola Pesanan (Hari Ini)</button>
+      <button class="tab" onclick="switchTab('menu',this)">Kelola Menu</button>
+      <button class="tab" onclick="switchTab('finance',this)">Keuangan & Rekap Bulanan</button>
+      <button class="tab" onclick="switchTab('account',this)">Pengaturan Akun</button>
+    </nav>
+
+    <!-- PESANAN -->
+    <section class="panel active" id="panel-orders">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2>Daftar Pesanan Masuk Hari Ini</h2>
+          <p>Data pesanan otomatis di-reset/kosong setiap pergantian hari baru.</p>
+        </div>
+        <button class="btn small danger" onclick="resetDailyOrdersManual()">Reset Manual Pesanan</button>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Waktu</th>
+              <th>Pemesan</th>
+              <th>Ruangan</th>
+              <th>Detail</th>
+              <th>Total</th>
+              <th>Pembayaran</th>
+              <th>Status</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="orderBody">
+            <tr><td colspan="9">Memuat...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- KELOLA MENU -->
+    <section class="panel" id="panel-menu">
+      <h2>Kelola Menu Makanan & Minuman</h2>
+
+      <div class="formbox">
+        <h3 style="color:var(--light)">Tambah Menu Baru</h3>
+
+        <div class="grid">
+          <input id="menuName" placeholder="Nama menu">
+
+          <select id="menuCategory">
+            <option value="Pastry">Pastry</option>
+            <option value="Non-Coffee">Non-Coffee</option>
+            <option value="Refresher">Refresher</option>
+            <option value="Tea Series">Tea Series</option>
+            <option value="Americano Series">Americano Series</option>
+            <option value="Manual Brew">Manual Brew</option>
+            <option value="Coffee">Coffee</option>
+          </select>
+
+          <input id="menuPrice" type="number" min="1" placeholder="Harga (Rp)">
+        </div>
+
+        <button class="btn" onclick="addMenu()">Tambah Menu</button>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nama</th>
+              <th>Kategori</th>
+              <th>Harga</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="menuBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- KEUANGAN -->
+    <section class="panel" id="panel-finance">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2>Keuangan & Rekap Bulanan</h2>
+          <p>Riwayat transaksi harian otomatis di-reset, rekap bulanan tetap terekam.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn success small" onclick="exportMonthlyExcel()">📥 Download Excel</button>
+          <button class="btn danger small" onclick="resetDailyFinanceManual()">Reset Manual Transaksi</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <h3>Total Pemasukan (Hari Ini)</h3>
+          <div class="value" id="totalIncome" style="color:#78f58e">Rp0</div>
+        </div>
+
+        <div class="stat">
+          <h3>Total Pengeluaran (Hari Ini)</h3>
+          <div class="value" id="totalExpense" style="color:#f57878">Rp0</div>
+        </div>
+
+        <div class="stat">
+          <h3>Saldo Kas Bersih</h3>
+          <div class="value" id="netBalance" style="color:var(--light)">Rp0</div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <h3 style="color:var(--light)">📅 Rekap Harian</h3>
+          <div id="dailyList">Belum ada data.</div>
+        </div>
+
+        <div class="box">
+          <h3 style="color:var(--light)">🗂️ Rekap Bulanan</h3>
+          <div id="monthlyList">Belum ada data.</div>
+        </div>
+      </div>
+
+      <div class="formbox">
+        <h3 style="color:var(--light)">Catat Transaksi Manual</h3>
+
+        <div class="grid">
+          <input id="trxDesc" placeholder="Keterangan">
+
+          <select id="trxType">
+            <option value="income">Pemasukan</option>
+            <option value="expense">Pengeluaran</option>
+          </select>
+
+          <input id="trxAmount" type="number" min="1" placeholder="Nominal Rupiah">
+        </div>
+
+        <button class="btn" onclick="addTransaction()">Simpan Transaksi</button>
+      </div>
+
+      <div class="tablewrap">
+        <h3 style="color:var(--light)">Riwayat Transaksi Hari Ini</h3>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Keterangan</th>
+              <th>Jenis</th>
+              <th>Nominal</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="financeBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PENGATURAN AKUN -->
+    <section class="panel" id="panel-account">
+      <h2>Pengaturan Akun Manager</h2>
+      <p>Ubah email yang digunakan sebagai username dan password akun Manager.</p>
+
+      <div class="formbox">
+        <div class="group">
+          <label>Email / Username saat ini</label>
+          <input id="currentEmail" disabled>
+        </div>
+
+        <div class="group">
+          <label>Email / Username baru</label>
+          <input id="newEmail" type="email" placeholder="Masukkan email baru">
+        </div>
+
+        <div class="group">
+          <label>Password lama (untuk verifikasi)</label>
+          <input id="oldPassword" type="password" placeholder="Masukkan password lama">
+        </div>
+
+        <div class="group">
+          <label>Password baru (kosongkan jika tidak diganti)</label>
+          <input id="newPassword" type="password" placeholder="Minimal 6 karakter">
+        </div>
+
+        <div class="group">
+          <label>Konfirmasi password baru</label>
+          <input id="confirmPassword" type="password" placeholder="Ulangi password baru">
+        </div>
+
+        <button class="btn" onclick="updateManagerAccount()">Simpan Perubahan Akun</button>
+
+        <p class="note">
+          Jika email diganti, Supabase mungkin mengirim tautan konfirmasi ke email baru.
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = "https://gxoyoafblxrzktlvcfyt.supabase.co";
+const SUPABASE_KEY = "sb_publishable_gcxCdvAXmocnjj1abZ_VuA_Nf4EpwRG";
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+let currentUser = null;
+let globalTransactionsData = [];
+
+window.addEventListener("DOMContentLoaded", async () => {
+  const { data } = await supabaseClient.auth.getSession();
+
+  if (data.session) {
+    currentUser = data.session.user;
+    showDashboard();
+  }
+});
+
+function rupiah(value) {
+  return "Rp" + Number(value || 0).toLocaleString("id-ID");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]));
+}
+
+// LOGIN
+async function handleLogin() {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+
+  if (!email || !password) {
+    return alert("Isi email dan password.");
+  }
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    return alert("Login gagal: " + error.message);
+  }
+
+  currentUser = data.user;
+  showDashboard();
+}
+
+// LOGOUT
+async function handleLogout() {
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  document.getElementById("dashboard").style.display = "none";
+  document.getElementById("loginSection").style.display = "block";
+  document.getElementById("loginPassword").value = "";
+}
+
+// TAMPILKAN DASHBOARD
+function showDashboard() {
+  document.getElementById("loginSection").style.display = "none";
+  document.getElementById("dashboard").style.display = "block";
+  document.getElementById("currentEmail").value = currentUser?.email || "";
+  initDashboard();
+}
+
+// PINDAH TAB
+function switchTab(name, button) {
+  document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+
+  document.getElementById("panel-" + name).classList.add("active");
+  button.classList.add("active");
+}
+
+// MUAT DATA & CEK PERGANTIAN HARI
+async function initDashboard() {
+  await checkDailyReset();
+  await Promise.all([
+    fetchOrders(),
+    fetchMenu(),
+    fetchFinance()
+  ]);
+}
+
+// RESET OTOMATIS GANTI HARI
+async function checkDailyReset() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const lastActiveDate = localStorage.getItem("kolin_last_active_date");
+
+  if (lastActiveDate && lastActiveDate !== todayStr) {
+    await supabaseClient.from("orders").delete().neq("id", 0);
+    await supabaseClient.from("transactions").delete().neq("id", 0);
+    console.log("Database pesanan & transaksi harian di-reset otomatis untuk tanggal:", todayStr);
+  }
+  localStorage.setItem("kolin_last_active_date", todayStr);
+}
+
+// RESET MANUAL
+async function resetDailyOrdersManual() {
+  if (!confirm("Yakin ingin mengosongkan semua daftar pesanan hari ini?")) return;
+
+  const { error } = await supabaseClient.from("orders").delete().neq("id", 0);
+  if (error) return alert("Gagal mereset pesanan: " + error.message);
+
+  alert("Daftar pesanan hari ini berhasil dikosongkan.");
+  await fetchOrders();
+}
+
+async function resetDailyFinanceManual() {
+  if (!confirm("Yakin ingin mengosongkan riwayat transaksi hari ini?")) return;
+
+  const { error } = await supabaseClient.from("transactions").delete().neq("id", 0);
+  if (error) return alert("Gagal mereset transaksi: " + error.message);
+
+  alert("Riwayat transaksi hari ini berhasil dikosongkan.");
+  await fetchFinance();
+}
+
+// AMBIL PESANAN HARI INI
+async function fetchOrders() {
+  const body = document.getElementById("orderBody");
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const { data, error } = await supabaseClient
+    .from("orders")
+    .select("*")
+    .order("id", { ascending: false });
+
+  if (error) {
+    body.innerHTML = `<tr><td colspan="9">Gagal memuat pesanan: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  const todayOrders = (data || []).filter(o => o.created_at && o.created_at.startsWith(todayStr));
+
+  if (!todayOrders.length) {
+    body.innerHTML = '<tr><td colspan="9">Belum ada pesanan masuk hari ini.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = todayOrders.map(o => {
+    const items = Array.isArray(o.items)
+      ? o.items.map(i => `${escapeHtml(i.name)} (${escapeHtml(i.qty)}x)`).join("<br>")
+      : "";
+
+    const done = o.status === "Selesai";
+
+    return `
+      <tr>
+        <td>#${escapeHtml(o.id)}</td>
+        <td>${o.created_at ? new Date(o.created_at).toLocaleTimeString("id-ID") : "-"}</td>
+        <td>${escapeHtml(o.customer_name)}</td>
+        <td>Ruang ${escapeHtml(o.room_number)}<br>${escapeHtml(o.floor)}</td>
+        <td>${items}${o.note ? `<br><small>Catatan: ${escapeHtml(o.note)}</small>` : ""}</td>
+        <td>${rupiah(o.total_price)}</td>
+        <td>${escapeHtml(o.payment_method)}</td>
+        <td><span class="badge ${done ? "completed" : "pending"}">${escapeHtml(o.status || "Pending")}</span></td>
+        <td>${done ? "Selesai" : `<button class="btn small" onclick="completeOrder(${Number(o.id)})">Selesaikan</button>`}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// SELESAIKAN PESANAN
+async function completeOrder(id) {
+  if (!confirm("Tandai pesanan ini selesai dan catat sebagai pemasukan?")) return;
+
+  const { data: order, error: readError } = await supabaseClient
+    .from("orders")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (readError) {
+    return alert("Gagal membaca pesanan: " + readError.message);
+  }
+
+  const { error: updateError } = await supabaseClient
+    .from("orders")
+    .update({ status: "Selesai" })
+    .eq("id", id);
+
+  if (updateError) {
+    return alert("Gagal memperbarui status: " + updateError.message);
+  }
+
+  const { error: trxError } = await supabaseClient
+    .from("transactions")
+    .insert([{
+      description: `Penjualan Pesanan #${id} (${order.customer_name || "Customer"})`,
+      type: "income",
+      amount: Number(order.total_price) || 0
+    }]);
+
+  if (trxError) {
+    alert("Status pesanan selesai, tetapi pencatatan keuangan gagal: " + trxError.message);
+  }
+
+  await initDashboard();
+}
+
+// AMBIL MENU
+async function fetchMenu() {
+  const body = document.getElementById("menuBody");
+
+  const { data, error } = await supabaseClient
+    .from("menu")
+    .select("*")
+    .order("id", { ascending: true });
+
+  if (error) {
+    body.innerHTML = `<tr><td colspan="5">Gagal memuat menu: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  if (!data?.length) {
+    body.innerHTML = '<tr><td colspan="5">Belum ada menu.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = data.map(p => `
+    <tr>
+      <td>${escapeHtml(p.id)}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.category)}</td>
+      <td>${rupiah(p.price)}</td>
+      <td><button class="btn danger small" onclick="deleteMenu(${Number(p.id)})">Hapus</button></td>
+    </tr>
+  `).join("");
+}
+
+// TAMBAH MENU
+async function addMenu() {
+  const name = document.getElementById("menuName").value.trim();
+  const category = document.getElementById("menuCategory").value;
+  const price = Number(document.getElementById("menuPrice").value);
+
+  if (!name || !Number.isFinite(price) || price <= 0) {
+    return alert("Isi nama menu dan harga yang benar.");
+  }
+
+  const { error } = await supabaseClient
+    .from("menu")
+    .insert([{ name, category, price }]);
+
+  if (error) {
+    return alert("Gagal menambah menu: " + error.message);
+  }
+
+  document.getElementById("menuName").value = "";
+  document.getElementById("menuPrice").value = "";
+
+  await fetchMenu();
+}
+
+// HAPUS MENU
+async function deleteMenu(id) {
+  if (!confirm("Yakin ingin menghapus menu ini?")) return;
+
+  const { error } = await supabaseClient.from("menu").delete().eq("id", id);
+  if (error) return alert("Gagal menghapus menu: " + error.message);
+
+  await fetchMenu();
+}
+
+// DATA KEUANGAN & REKAP BULANAN
+async function fetchFinance() {
+  const body = document.getElementById("financeBody");
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const { data, error } = await supabaseClient
+    .from("transactions")
+    .select("*")
+    .order("id", { ascending: false });
+
+  if (error) {
+    body.innerHTML = `<tr><td colspan="5">Gagal memuat transaksi: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  globalTransactionsData = data || [];
+
+  const todayTransactions = globalTransactionsData.filter(t => t.created_at && t.created_at.startsWith(todayStr));
+
+  let income = 0;
+  let expense = 0;
+
+  const daily = {};
+  const monthly = {};
+
+  const months = [
+    "Januari", "Februari", "Maret", "April",
+    "Mei", "Juni", "Juli", "Agustus",
+    "September", "Oktober", "November", "Desember"
+  ];
+
+  globalTransactionsData.forEach(t => {
+    const amount = Number(t.amount) || 0;
+    const date = new Date(t.created_at);
+
+    if (!isNaN(date)) {
+      const d = date.toLocaleDateString("en-CA");
+      const m = `${months[date.getMonth()]} ${date.getFullYear()}`;
+
+      if (t.type === "income") {
+        daily[d] = (daily[d] || 0) + amount;
+        monthly[m] = (monthly[m] || 0) + amount;
+      }
+    }
+  });
+
+  body.innerHTML = todayTransactions.map(t => {
+    const amount = Number(t.amount) || 0;
+    const date = new Date(t.created_at);
+
+    if (t.type === "income") income += amount;
+    if (t.type === "expense") expense += amount;
+
+    return `
+      <tr>
+        <td>${isNaN(date) ? "-" : date.toLocaleTimeString("id-ID")}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td>
+          <span class="badge ${t.type === "income" ? "income" : "expense"}">
+            ${t.type === "income" ? "Pemasukan" : "Pengeluaran"}
+          </span>
+        </td>
+        <td>${rupiah(amount)}</td>
+        <td><button class="btn danger small" onclick="deleteTransaction(${Number(t.id)})">Hapus</button></td>
+      </tr>
+    `;
+  }).join("") || '<tr><td colspan="5">Belum ada transaksi hari ini.</td></tr>';
+
+  document.getElementById("totalIncome").textContent = rupiah(income);
+  document.getElementById("totalExpense").textContent = rupiah(expense);
+  document.getElementById("netBalance").textContent = rupiah(income - expense);
+
+  document.getElementById("dailyList").innerHTML =
+    Object.keys(daily).sort().reverse().map(d =>
+      `<div class="folderitem"><span>${d}</span><span>${rupiah(daily[d])}</span></div>`
+    ).join("") || "Belum ada data harian.";
+
+  document.getElementById("monthlyList").innerHTML =
+    Object.keys(monthly).map(m =>
+      `<div class="folderitem"><span>${m}</span><span>${rupiah(monthly[m])}</span></div>`
+    ).join("") || "Belum ada data bulanan.";
+}
+
+// EXPORT EXCEL
+function exportMonthlyExcel() {
+  if (!globalTransactionsData.length) {
+    return alert("Belum ada data transaksi untuk diexport ke Excel.");
+  }
+
+  const trxRows = globalTransactionsData.map(t => ({
+    "Waktu": t.created_at ? new Date(t.created_at).toLocaleString("id-ID") : "-",
+    "Keterangan": t.description,
+    "Jenis Transaksi": t.type === "income" ? "Pemasukan" : "Pengeluaran",
+    "Nominal (Rp)": Number(t.amount) || 0
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const wsTrx = XLSX.utils.json_to_sheet(trxRows);
+  XLSX.utils.book_append_sheet(wb, wsTrx, "Riwayat Transaksi");
+
+  const now = new Date();
+  const monthsName = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const fileName = `Rekap_Keuangan_KOLIN_${monthsName[now.getMonth()]}_${now.getFullYear()}.xlsx`;
+
+  XLSX.writeFile(wb, fileName);
+}
+
+// TAMBAH TRANSAKSI
+async function addTransaction() {
+  const description = document.getElementById("trxDesc").value.trim();
+  const type = document.getElementById("trxType").value;
+  const amount = Number(document.getElementById("trxAmount").value);
+
+  if (!description || !Number.isFinite(amount) || amount <= 0) {
+    return alert("Isi keterangan dan nominal yang benar.");
+  }
+
+  const { error } = await supabaseClient
+    .from("transactions")
+    .insert([{ description, type, amount }]);
+
+  if (error) {
+    return alert("Gagal menyimpan transaksi: " + error.message);
+  }
+
+  document.getElementById("trxDesc").value = "";
+  document.getElementById("trxAmount").value = "";
+
+  await fetchFinance();
+}
+
+// HAPUS TRANSAKSI
+async function deleteTransaction(id) {
+  if (!confirm("Hapus catatan transaksi ini?")) return;
+
+  const { error } = await supabaseClient.from("transactions").delete().eq("id", id);
+  if (error) return alert("Gagal menghapus transaksi: " + error.message);
+
+  await fetchFinance();
+}
+
+// PENGATURAN AKUN
+async function updateManagerAccount() {
+  if (!currentUser) return alert("Silakan login ulang.");
+
+  const oldPassword = document.getElementById("oldPassword").value;
+  const newEmail = document.getElementById("newEmail").value.trim();
+  const newPassword = document.getElementById("newPassword").value;
+  const confirmPassword = document.getElementById("confirmPassword").value;
+
+  if (!oldPassword) return alert("Masukkan password lama untuk verifikasi.");
+  if (!newEmail && !newPassword) return alert("Masukkan email baru atau password baru.");
+
+  if (newPassword && (newPassword.length < 6 || newPassword !== confirmPassword)) {
+    return alert("Password baru minimal 6 karakter dan harus sama dengan konfirmasi.");
+  }
+
+  const oldEmail = currentUser.email;
+  const { error: verifyError } = await supabaseClient.auth.signInWithPassword({
+    email: oldEmail,
+    password: oldPassword
+  });
+
+  if (verifyError) return alert("Verifikasi password lama gagal: " + verifyError.message);
+
+  const changes = {};
+  if (newEmail && newEmail !== oldEmail) changes.email = newEmail;
+  if (newPassword) changes.password = newPassword;
+
+  const { data, error } = await supabaseClient.auth.updateUser(changes);
+  if (error) return alert("Gagal memperbarui akun: " + error.message);
+
+  currentUser = data.user || currentUser;
+  document.getElementById("currentEmail").value = currentUser.email || newEmail || oldEmail;
+
+  document.getElementById("newEmail").value = "";
+  document.getElementById("oldPassword").value = "";
+  document.getElementById("newPassword").value = "";
+  document.getElementById("confirmPassword").value = "";
+
+  alert("Permintaan perubahan akun berhasil dikirim.");
+}
+
+// REALTIME PESANAN
+supabaseClient.channel("kolin-orders-manager")
+  .on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "orders" },
+    () => { if (currentUser) fetchOrders(); }
+  )
+  .subscribe();
+</script>
+</body>
+</html>
